@@ -91,4 +91,49 @@ describe("applyExtraParamsToAgent", () => {
       "X-Custom": "1",
     });
   });
+
+  it("applies OpenRouter provider routing via model.compat.openRouterRouting", () => {
+    const calls: Array<Model<"openai-completions">> = [];
+    const baseStreamFn: StreamFn = (model, _context, _options) => {
+      calls.push(model as Model<"openai-completions">);
+      return new AssistantMessageEventStream();
+    };
+    const agent = { streamFn: baseStreamFn };
+
+    applyExtraParamsToAgent(
+      agent,
+      {
+        agents: {
+          defaults: {
+            models: {
+              "openrouter/openrouter/auto": {
+                params: {
+                  provider: { order: ["fireworks"], allow_fallbacks: false },
+                },
+              },
+            },
+          },
+        },
+      },
+      "openrouter",
+      "openrouter/auto",
+    );
+
+    const model = {
+      api: "openai-completions",
+      provider: "openrouter",
+      id: "openrouter/auto",
+      baseUrl: "https://openrouter.ai/api/v1",
+      compat: {},
+    } as unknown as Model<"openai-completions">;
+    const context: Context = { messages: [] };
+
+    void agent.streamFn?.(model, context, undefined);
+
+    expect(calls).toHaveLength(1);
+    expect((calls[0] as any).compat?.openRouterRouting).toEqual({
+      order: ["fireworks"],
+      allow_fallbacks: false,
+    });
+  });
 });

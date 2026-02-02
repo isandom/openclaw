@@ -30,6 +30,43 @@ type CacheRetentionStreamOptions = Partial<SimpleStreamOptions> & {
   cacheRetention?: CacheRetention;
 };
 
+type OpenRouterRouting = Record<string, unknown>;
+
+function parseOpenRouterRouting(value: unknown): OpenRouterRouting | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = { ...(value as Record<string, unknown>) };
+
+  // Validate the commonly-used keys to avoid sending obviously broken shapes.
+  if ("only" in record) {
+    if (!Array.isArray(record.only) || !record.only.every((v) => typeof v === "string")) {
+      delete record.only;
+    }
+  }
+
+  if ("order" in record) {
+    if (!Array.isArray(record.order) || !record.order.every((v) => typeof v === "string")) {
+      delete record.order;
+    }
+  }
+
+  // OpenRouter supports disabling fallbacks; accept either casing.
+  if ("allow_fallbacks" in record && typeof record.allow_fallbacks !== "boolean") {
+    delete record.allow_fallbacks;
+  }
+  if ("allowFallbacks" in record && typeof record.allowFallbacks !== "boolean") {
+    delete record.allowFallbacks;
+  }
+
+  if (Object.keys(record).length === 0) {
+    return undefined;
+  }
+
+  return record;
+}
+
 /**
  * Resolve cacheRetention from extraParams, supporting both new `cacheRetention`
  * and legacy `cacheControlTtl` values for backwards compatibility.
@@ -73,6 +110,13 @@ function createStreamFnWithExtraParams(
     return undefined;
   }
 
+  const openRouterRouting =
+    provider === "openrouter"
+      ? (parseOpenRouterRouting(extraParams.openRouterRouting) ??
+        // Allow OpenRouter's raw `provider` request field shape in config for convenience.
+        parseOpenRouterRouting(extraParams.provider))
+      : undefined;
+
   const streamParams: CacheRetentionStreamOptions = {};
   if (typeof extraParams.temperature === "number") {
     streamParams.temperature = extraParams.temperature;
@@ -85,18 +129,34 @@ function createStreamFnWithExtraParams(
     streamParams.cacheRetention = cacheRetention;
   }
 
-  if (Object.keys(streamParams).length === 0) {
+  if (Object.keys(streamParams).length === 0 && !openRouterRouting) {
     return undefined;
   }
 
-  log.debug(`creating streamFn wrapper with params: ${JSON.stringify(streamParams)}`);
+  log.debug(
+    `creating streamFn wrapper with params: ${JSON.stringify({ ...streamParams, openRouterRouting })}`,
+  );
 
   const underlying = baseStreamFn ?? streamSimple;
-  const wrappedStreamFn: StreamFn = (model, context, options) =>
-    underlying(model, context, {
+  const wrappedStreamFn: StreamFn = (model, context, options) => {
+    const nextModel =
+      openRouterRouting && model && typeof model === "object"
+        ? {
+            ...(model as unknown as Record<string, unknown>),
+            compat: {
+              ...((model as unknown as Record<string, unknown>).compat as unknown as
+                | Record<string, unknown>
+                | undefined),
+              openRouterRouting,
+            },
+          }
+        : model;
+
+    return underlying(nextModel as never, context, {
       ...streamParams,
       ...options,
     });
+  };
 
   return wrappedStreamFn;
 }
