@@ -139,14 +139,22 @@ function createStreamFnWithExtraParams(
 
   const underlying = baseStreamFn ?? streamSimple;
   const wrappedStreamFn: StreamFn = (model, context, options) => {
+    const modelRecord =
+      model && typeof model === "object"
+        ? (model as unknown as Record<string, unknown>)
+        : undefined;
+    const compatValue = modelRecord?.compat;
+    const compatRecord =
+      compatValue && typeof compatValue === "object" && !Array.isArray(compatValue)
+        ? (compatValue as Record<string, unknown>)
+        : undefined;
+
     const nextModel =
-      openRouterRouting && model && typeof model === "object"
+      openRouterRouting && modelRecord
         ? {
-            ...(model as unknown as Record<string, unknown>),
+            ...modelRecord,
             compat: {
-              ...((model as unknown as Record<string, unknown>).compat as unknown as
-                | Record<string, unknown>
-                | undefined),
+              ...compatRecord,
               openRouterRouting,
             },
           }

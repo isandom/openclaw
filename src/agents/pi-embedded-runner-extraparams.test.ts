@@ -131,7 +131,10 @@ describe("applyExtraParamsToAgent", () => {
     void agent.streamFn?.(model, context, undefined);
 
     expect(calls).toHaveLength(1);
-    expect((calls[0] as any).compat?.openRouterRouting).toEqual({
+    const compat = (calls[0] as { compat?: unknown } | undefined)?.compat;
+    const openRouterRouting = (compat as { openRouterRouting?: unknown } | undefined)
+      ?.openRouterRouting;
+    expect(openRouterRouting).toEqual({
       order: ["fireworks"],
       allow_fallbacks: false,
     });
